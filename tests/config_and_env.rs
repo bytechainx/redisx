@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable
+)]
 //! 配置集成测试：校验正/反用例、环境变量加载、密码脱敏、URL 与模式推断、TOML 解析。
 
 use std::time::Duration;

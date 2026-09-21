@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable
+)]
 //! 公共 API 表面集成测试：类型存在性、`Send + Sync` 约束、默认 feature 导出。
 
 use std::time::Duration;

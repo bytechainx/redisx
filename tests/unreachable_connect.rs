@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable
+)]
 //! 失败路径集成测试：对不可达地址（`127.0.0.1:1`，必然拒绝）建连与 `ping` 必须失败。
 //!
 //! 全部超时压到 1 秒级以内，保证测试不会因为等待网络而变慢。
