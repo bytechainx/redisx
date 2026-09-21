@@ -655,9 +655,6 @@ impl RedisConfig {
 mod tests {
     use super::*;
 
-    // 低层解析辅助现居 `config::parse`；`super::*` 未覆盖的三个在此显式引入。
-    use super::parse::{parse_bool, split_nodes};
-
     fn secret() -> String {
         // 密码一律由非字面量源构造，避免硬编码凭据
         (0..12).map(|i| char::from(b'a' + (i % 26) as u8)).collect()
@@ -960,47 +957,5 @@ mod tests {
         let err =
             serde_json::from_str::<RedisConfig>(r#"{"max_in_flight":0}"#).expect_err("zero lanes");
         assert!(err.to_string().contains("max_in_flight"));
-    }
-
-    #[test]
-    fn helpers_parse_and_validate() {
-        assert_eq!(
-            parse_host_port("localhost").expect("port"),
-            ("localhost".to_owned(), 6379)
-        );
-        assert_eq!(
-            parse_host_port("[::1]:6380").expect("ipv6"),
-            ("::1".to_owned(), 6380)
-        );
-        assert!(parse_host_port("10.1.2.3:not-a-port").is_err());
-
-        assert!(validate_seed("127.0.0.1:6379").is_ok());
-        assert!(validate_seed("redis://127.0.0.1:6379").is_ok());
-        assert!(validate_seed("").is_err());
-        assert!(validate_seed("redis://").is_err());
-
-        assert!(parse_bool("ON").expect("on"));
-        assert!(!parse_bool("0").expect("off"));
-        assert!(parse_bool("maybe").is_err());
-
-        assert_eq!(parse_mode("cluster").expect("cluster"), RedisMode::Cluster);
-        assert_eq!(
-            parse_mode("SENTINEL").expect("sentinel"),
-            RedisMode::Sentinel
-        );
-        assert_eq!(parse_mode("single").expect("single"), RedisMode::Standalone);
-        assert!(parse_mode("wat").is_err());
-
-        assert_eq!(
-            split_nodes(" a:1 , ,b:2 "),
-            vec!["a:1".to_owned(), "b:2".to_owned()]
-        );
-    }
-
-    #[test]
-    fn redaction_helper_matrix() {
-        assert_eq!(redact_seed_url("redis://u:p@h:1"), "redis://u:***@h:1");
-        assert_eq!(redact_seed_url("redis://p@h:1"), "redis://***@h:1");
-        assert_eq!(redact_seed_url("h:1"), "h:1");
     }
 }

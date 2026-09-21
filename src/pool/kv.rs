@@ -97,3 +97,22 @@ pub(crate) async fn ping(mut conn: RedisBackend) -> RedisResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ttl_validation_and_conversion() {
+        assert!(validate_ttl(None).is_ok());
+        assert!(validate_ttl(Some(Duration::from_millis(1))).is_ok());
+        let zero = validate_ttl(Some(Duration::ZERO)).expect_err("零");
+        assert!(matches!(zero, RedisError::Config(_)));
+        let sub = validate_ttl(Some(Duration::from_nanos(100))).expect_err("亚毫秒");
+        assert!(matches!(sub, RedisError::Config(_)));
+
+        assert_eq!(ttl_to_millis(Duration::from_secs(2)).expect("ms"), 2000);
+        assert_eq!(ttl_to_millis(Duration::from_millis(1)).expect("ms"), 1);
+        assert!(ttl_to_millis(Duration::from_nanos(500)).is_err());
+    }
+}

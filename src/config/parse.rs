@@ -113,3 +113,50 @@ pub(super) fn parse_mode(value: &str) -> RedisResult<RedisMode> {
         ))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helpers_parse_and_validate() {
+        assert_eq!(
+            parse_host_port("localhost").expect("port"),
+            ("localhost".to_owned(), 6379)
+        );
+        assert_eq!(
+            parse_host_port("[::1]:6380").expect("ipv6"),
+            ("::1".to_owned(), 6380)
+        );
+        assert!(parse_host_port("10.1.2.3:not-a-port").is_err());
+
+        assert!(validate_seed("127.0.0.1:6379").is_ok());
+        assert!(validate_seed("redis://127.0.0.1:6379").is_ok());
+        assert!(validate_seed("").is_err());
+        assert!(validate_seed("redis://").is_err());
+
+        assert!(parse_bool("ON").expect("on"));
+        assert!(!parse_bool("0").expect("off"));
+        assert!(parse_bool("maybe").is_err());
+
+        assert_eq!(parse_mode("cluster").expect("cluster"), RedisMode::Cluster);
+        assert_eq!(
+            parse_mode("SENTINEL").expect("sentinel"),
+            RedisMode::Sentinel
+        );
+        assert_eq!(parse_mode("single").expect("single"), RedisMode::Standalone);
+        assert!(parse_mode("wat").is_err());
+
+        assert_eq!(
+            split_nodes(" a:1 , ,b:2 "),
+            vec!["a:1".to_owned(), "b:2".to_owned()]
+        );
+    }
+
+    #[test]
+    fn redaction_helper_matrix() {
+        assert_eq!(redact_seed_url("redis://u:p@h:1"), "redis://u:***@h:1");
+        assert_eq!(redact_seed_url("redis://p@h:1"), "redis://***@h:1");
+        assert_eq!(redact_seed_url("h:1"), "h:1");
+    }
+}

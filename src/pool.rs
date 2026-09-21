@@ -907,20 +907,6 @@ mod tests {
     }
 
     #[test]
-    fn ttl_validation_and_conversion() {
-        assert!(kv::validate_ttl(None).is_ok());
-        assert!(kv::validate_ttl(Some(Duration::from_millis(1))).is_ok());
-        let zero = kv::validate_ttl(Some(Duration::ZERO)).expect_err("零");
-        assert!(matches!(zero, RedisError::Config(_)));
-        let sub = kv::validate_ttl(Some(Duration::from_nanos(100))).expect_err("亚毫秒");
-        assert!(matches!(sub, RedisError::Config(_)));
-
-        assert_eq!(kv::ttl_to_millis(Duration::from_secs(2)).expect("ms"), 2000);
-        assert_eq!(kv::ttl_to_millis(Duration::from_millis(1)).expect("ms"), 1);
-        assert!(kv::ttl_to_millis(Duration::from_nanos(500)).is_err());
-    }
-
-    #[test]
     fn debug_outputs_do_not_leak_password() {
         let secret = String::from("s3cr3t-value");
         let cfg = RedisConfig::builder()
