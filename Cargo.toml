@@ -7,7 +7,7 @@ description = "Async Redis adapter with standalone, cluster and sentinel topolog
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bytechainx/redisx"
 homepage = "https://github.com/bytechainx/redisx"
-documentation = "https://docs.rs/redisx"
+documentation = "https://github.com/bytechainx/redisx#readme"
 readme = "README.md"
 keywords = ["redis", "cache", "key-value", "async", "cluster"]
 categories = ["caching", "database", "asynchronous"]
@@ -41,7 +41,3 @@ url = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]

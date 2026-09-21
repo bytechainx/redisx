@@ -12,14 +12,17 @@ Lua 脚本与带所有权校验的分布式锁，并可选提供原始 Pub/Sub�
 
 ## 安装
 
-```bash
-cargo add redisx
+本 crate **不发布到 crates.io**，通过 git 依赖引入：
+
+```toml
+[dependencies]
+redisx = { git = "https://github.com/bytechainx/redisx" }
 ```
 
 TLS 使用 rustls（webpki 根证书）；如需关闭默认的 Pub/Sub 支持：
 
-```bash
-cargo add redisx --no-default-features
+```toml
+redisx = { git = "https://github.com/bytechainx/redisx", default-features = false }
 ```
 
 ## 最小可运行示例
