@@ -16,6 +16,16 @@
   - `tests/aidd_boundary.rs`：8 条对抗/边界用例与 `// AIDD:` 人工复核表。
 - `tests/live_redis.rs`：真实 Redis 的 live 用例（建连 / 结构化探活 / 唯一名 key 的 SET-GET-DEL 与 TTL 往返 + 清理 / close 收尾），默认 `#[ignore]`，凭据只读环境变量，运行方式见 `scripts/live/README.md`。
 
+## [0.1.1] - 2026-09-22
+
+### 修正
+
+- `RedisConfig::from_toml` 现在拒绝非空 `password`：原行为会把 TOML 明文凭据带进配置，
+  与 `docs/标准.md` §2「凭据只能经环境变量或 builder 注入」不符。属**实现向契约靠拢**的行为收紧
+  （PATCH）；`Debug` 与 `display_endpoint()` 的脱敏不变。
+- `from_toml` 的 TOML 解析错误消息改用 `toml::de::Error::message()`，不再包含出错源码行
+  （原 `Display` 会把 `password = "…"` 整行带进 `RedisError::Config`，与「密码永不进入日志」相悖）。
+
 ## [0.1.0] - 2026-09-21
 
 ### 新增

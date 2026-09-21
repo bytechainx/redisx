@@ -31,17 +31,23 @@ impl RedisConfig {
 
     /// 从 TOML 字符串解析并校验。
     ///
-    /// 支持字段：`addr`、`nodes`（字符串或数组）、`sentinel_master`、`username`、`password`、
+    /// 支持字段：`addr`、`nodes`（字符串或数组）、`sentinel_master`、`username`、
     /// `db`、`tls`、`mode`、`connect_timeout_ms`、`command_timeout_ms`、`acquire_timeout_ms`、
     /// `max_in_flight`、`client_name`、`warmup_count`、`tcp_keepalive_ms`、
     /// `reconnect_max_delay_ms`、`max_cluster_redirects`、`blocking_timeout_ms`。
     ///
+    /// **不接受 `password`**：凭据只能经环境变量或 builder（含
+    /// [`RedisConfigBuilder::password_from_provider`]）注入，TOML 提供非空 `password`
+    /// 一律 fail-closed（`docs/标准.md` §2）。
+    ///
     /// # Errors
     ///
-    /// TOML 语法错误、字段类型不符或配置校验失败时返回 [`RedisError::Config`]。
+    /// TOML 语法错误、字段类型不符、提供明文 `password` 或配置校验失败时返回
+    /// [`RedisError::Config`]。解析错误消息不含 TOML 源码行（避免配置原文进日志）。
     pub fn from_toml(text: &str) -> RedisResult<Self> {
-        let wire: RedisConfigWire =
-            toml::from_str(text).map_err(|e| RedisError::Config(format!("TOML 配置非法: {e}")))?;
+        // 用 `message()` 而非 `Display`：后者会带 span 与出错源码行，可能把同行凭据带进日志。
+        let wire: RedisConfigWire = toml::from_str(text)
+            .map_err(|e| RedisError::Config(format!("TOML 配置非法: {}", e.message())))?;
         let mut cfg = Self::default();
         cfg.apply_wire(&wire)?;
         cfg.validate()?;

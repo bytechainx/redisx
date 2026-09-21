@@ -515,6 +515,18 @@ impl RedisConfig {
     }
 
     fn apply_wire(&mut self, wire: &RedisConfigWire) -> RedisResult<()> {
+        // 凭据只能经环境变量或 builder 注入（`docs/标准.md` §2）；TOML / serde 文本源
+        // 提供的非空 password 一律 fail-closed，且错误信息不回显取值。
+        if wire
+            .password
+            .as_ref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            return Err(RedisError::Config(
+                "不允许经 TOML / serde 提供明文 password；凭据只能经环境变量或 builder 注入"
+                    .to_owned(),
+            ));
+        }
         if let Some(addr) = wire
             .addr
             .as_ref()
@@ -545,9 +557,6 @@ impl RedisConfig {
             } else {
                 Some(username.clone())
             };
-        }
-        if let Some(password) = wire.password.as_ref().filter(|v| !v.trim().is_empty()) {
-            self.password = Some(password.clone());
         }
         if let Some(db) = wire.db {
             self.db = db;
