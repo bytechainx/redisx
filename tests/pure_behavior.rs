@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable
+)]
 //! 纯函数行为集成测试：错误映射与可重试判定、重试退避计算、锁令牌生成/校验、
 //! `TxCmd` 构造、Stream 条目查询、重试安全分类。
 
