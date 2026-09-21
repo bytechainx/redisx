@@ -132,3 +132,68 @@ async fn live_kv_roundtrip_ttl_and_cleanup() {
     .await
     .expect("live 用例不得超时");
 }
+
+/// 分布式锁的取 / 续 / 放往返：覆盖 `lock_acquire` / `lock_extend` / `lock_release`
+/// 三入口的真实行为（离线无法构造 `RedisLock`，故这三条行为只能在此验证）。
+#[tokio::test]
+#[ignore = "需要真实 Redis 实例与 FOUNDATIONX_REDISX_* / REDIS_URL 环境变量"]
+async fn live_lock_acquire_release_extend_roundtrip() {
+    tokio::time::timeout(LIVE_TIMEOUT, async {
+        let client = RedisClient::connect_from_env().await.unwrap_or_else(|error| {
+            panic!("建池失败，请确认 FOUNDATIONX_REDISX_ADDR / USERNAME / PASSWORD / DB 与 live 服务可达: {error}")
+        });
+        // 唯一化锁键与 fencing 键（E4）。
+        let key = live_key("lock");
+        let fence_key = format!("fence:{key}");
+
+        let lock = client
+            .lock_acquire(&key, Duration::from_secs(30))
+            .await
+            .expect("取锁应成功");
+        assert!(lock.verify_token(lock.token()), "owner 令牌自校验应通过");
+        assert!(!lock.verify_token("not-the-owner-token"), "他人令牌不得通过");
+        assert!(lock.fence() >= 1, "fencing 序号应从 1 起");
+
+        // 续期：owner 可续；释放：owner 可放；再释放返回 false（不再是 owner）。
+        assert!(
+            client
+                .lock_extend(&lock, Duration::from_secs(60))
+                .await
+                .expect("续期应成功"),
+            "owner 续期应返回 true"
+        );
+        assert!(
+            client
+                .lock_release(&lock)
+                .await
+                .expect("释放应成功"),
+            "owner 释放应返回 true"
+        );
+        assert!(
+            !client
+                .lock_release(&lock)
+                .await
+                .expect("二次释放应成功返回"),
+            "非 owner 释放应返回 false"
+        );
+
+        // 释放走 compare-and-delete：锁键此时应已不存在；再清理 fencing 计数键。
+        assert!(
+            !client.exists(&key).await.expect("EXISTS 应成功"),
+            "释放后锁键不应仍存在"
+        );
+        assert!(
+            client.del(&fence_key).await.expect("清理 fencing 键"),
+            "fencing 键应已删除"
+        );
+
+        client
+            .pool()
+            .close(Duration::from_secs(5))
+            .await
+            .expect("close 应成功");
+        assert!(client.pool().is_closed());
+    })
+    .await
+    .expect("live 用例不得超时");
+}

@@ -7,20 +7,22 @@
 //! TDD 行为契约（特性 002）。
 //!
 //! 入口集合 = `specs/002-public-api-compliance-and-test-tiers/contracts/public-api-contract.md`
-//! 登记的 12 个 redisx 入口。契约中的 `RedisClient::lock` 对应实现里的分布式锁族
-//! `lock_acquire` / `lock_release` / `lock_extend`（表内保留契约登记名以对齐检查器 V14）。
+//! 登记的 14 个 redisx 入口（分布式锁按 `lock_acquire` / `lock_release` / `lock_extend` 分列）。
 //!
 //! 全部用例离线：失败路径使用未建连的池（`RedisPool::new` 只校验配置）与必然拒绝连接的
 //! `127.0.0.1:1`，不依赖真实 Redis 服务。
 //!
 //! // TDD-PROBE: RedisConfig::from_env | 变异：忽略 REDIS_URL 优先级恒读散字段 | 红=from_env_defaults_and_url_override | 绿=from_env_defaults_and_url_override
 //! // TDD-PROBE: RedisConfig::from_toml | 变异：放行非法 mode 字面量 | 红=from_toml_parses_and_rejects_invalid | 绿=from_toml_parses_and_rejects_invalid
+//! // TDD-PROBE: RedisConfig::from_toml | 变异：wire 采纳非空 password（明文凭据入配置） | 红=from_toml_rejects_plaintext_password | 绿=from_toml_rejects_plaintext_password
 //! // TDD-PROBE: RedisConfig::validate | 变异：去掉 Cluster 非 0 库与 Sentinel 缺 master 拦截 | 红=validate_topology_rules | 绿=validate_topology_rules
 //! // TDD-PROBE: RedisClient::connect_from_env | 变异：connect_from_env 忽略 addr 恒连本机默认 | 红=connect_from_env_refused_is_retryable | 绿=connect_from_env_refused_is_retryable
 //! // TDD-PROBE: RedisClient::set | 变异：未建连时写命令返回 Ok | 红=set_get_del_fail_closed_without_connection | 绿=set_get_del_fail_closed_without_connection
 //! // TDD-PROBE: RedisClient::get | 变异：未建连时读命令返回 Ok(None) | 红=set_get_del_fail_closed_without_connection | 绿=set_get_del_fail_closed_without_connection
 //! // TDD-PROBE: RedisClient::del | 变异：未建连时删除返回 Ok(false) | 红=set_get_del_fail_closed_without_connection | 绿=set_get_del_fail_closed_without_connection
-//! // TDD-PROBE: RedisClient::lock | 变异：lock_acquire 接受零 TTL | 红=lock_acquire_rejects_zero_ttl | 绿=lock_acquire_rejects_zero_ttl
+//! // TDD-PROBE: RedisClient::lock_acquire | 变异：lock_acquire 接受零 TTL | 红=lock_acquire_rejects_zero_ttl | 绿=lock_acquire_rejects_zero_ttl
+//! // TDD-PROBE: RedisClient::lock_release | 变异：入口不再公开（pub 收窄为 pub(crate)） | 红=lock_release_and_extend_are_public_api | 绿=lock_release_and_extend_are_public_api
+//! // TDD-PROBE: RedisClient::lock_extend | 变异：入口不再公开（pub 收窄为 pub(crate)） | 红=lock_release_and_extend_are_public_api | 绿=lock_release_and_extend_are_public_api
 //! // TDD-PROBE: RedisPool::connect | 变异：connect 不可达时返回未建连的池 | 红=pool_connect_refused_errors | 绿=pool_connect_refused_errors
 //! // TDD-PROBE: RedisPool::ping | 变异：ping 未建连时返回 Ok | 红=pool_ping_and_health_fail_closed | 绿=pool_ping_and_health_fail_closed
 //! // TDD-PROBE: RedisPool::health_check | 变异：health_check 未探活即返回快照 | 红=pool_ping_and_health_fail_closed | 绿=pool_ping_and_health_fail_closed
@@ -163,6 +165,21 @@ fn from_toml_parses_and_rejects_invalid() {
     );
 }
 
+/// `RedisConfig::from_toml` 必须拒绝非空 `password`——凭据只能经 env / builder 注入
+/// （`docs/标准.md` §2），TOML 通道不得把明文凭据带进配置。
+#[test]
+fn from_toml_rejects_plaintext_password() {
+    let toml = "addr = \"127.0.0.1:6379\"\npassword = \"plaintext-secret\"\n";
+    let error = RedisConfig::from_toml(toml).expect_err("TOML 明文 password 必须被拒绝");
+    assert!(matches!(error, RedisError::Config(_)), "{error}");
+    // 拒绝信息不得回显凭据取值。
+    assert!(!error.to_string().contains("plaintext-secret"), "{error}");
+
+    // 空白 password 等同未提供（不视为凭据走私）。
+    RedisConfig::from_toml("addr = \"127.0.0.1:6379\"\npassword = \"   \"\n")
+        .expect("空白 password 不应触发拒绝");
+}
+
 /// `RedisConfig::validate`：Cluster 非 0 逻辑库与 Sentinel 缺 master 一律拒绝。
 #[test]
 fn validate_topology_rules() {
@@ -244,7 +261,7 @@ async fn set_get_del_fail_closed_without_connection() {
     );
 }
 
-/// `RedisClient::lock`（实现为 `lock_acquire`）：空 key 与零 TTL 是本地配置错误，不碰网络。
+/// `RedisClient::lock_acquire`：空 key 与零 TTL 是本地配置错误，不碰网络。
 #[tokio::test]
 async fn lock_acquire_rejects_zero_ttl() {
     let client = disconnected_client();
@@ -265,6 +282,18 @@ async fn lock_acquire_rejects_zero_ttl() {
         .await
         .expect_err("空 key 必须拒绝");
     assert!(matches!(empty_key, RedisError::Config(_)), "{empty_key}");
+}
+
+/// `RedisClient::{lock_release,lock_extend}` 的公开 API 面。
+///
+/// 离线的能力边界：`RedisLock` 没有公开构造器（只能由 `lock_acquire` 触达服务端产出），
+/// 故其**行为**由 live 用例 `live_lock_acquire_release_extend_roundtrip` 覆盖；
+/// 本用例以函数项证明两个入口确实在公开 API 上且形参为 `&RedisLock`——把 `pub` 收窄为
+/// `pub(crate)`（或删除入口）会让本用例编译失败，即公开面契约的红。
+#[test]
+fn lock_release_and_extend_are_public_api() {
+    let _release = RedisClient::lock_release;
+    let _extend = RedisClient::lock_extend;
 }
 
 /// `RedisPool::connect`：不可达地址必须返回错误，而不是「未建连的池」。

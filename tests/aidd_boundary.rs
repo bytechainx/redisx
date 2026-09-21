@@ -9,7 +9,7 @@
 //! 候选由 AI 生成，逐条人工复核后仅保留「结论=保留」项；丢弃项登记于 PR 描述。
 //! 全部离线，不依赖真实 Redis。
 //!
-//! // AIDD: toml_password_stays_redacted | 来源=AI | 复核=ZoneCNH/2026-09-22 | 依据=标准.md §2 Debug 与 display_endpoint 一律脱敏 | 结论=保留
+//! // AIDD: toml_plaintext_password_is_rejected_and_not_leaked | 来源=AI | 复核=ZoneCNH/2026-09-22 | 依据=标准.md §2 凭据只经 env/builder 注入、错误不回显配置原文 | 结论=保留
 //! // AIDD: insecure_tls_and_unix_socket_rejected | 来源=AI | 复核=ZoneCNH/2026-09-22 | 依据=标准.md §2 拒绝 insecure TLS / Unix socket | 结论=保留
 //! // AIDD: node_url_credentials_redacted_in_error | 来源=AI | 复核=ZoneCNH/2026-09-22 | 依据=标准.md §2 错误信息不回显凭据 | 结论=保留
 //! // AIDD: lock_token_uniqueness_and_constant_time_compare | 来源=AI | 复核=ZoneCNH/2026-09-22 | 依据=标准.md §3 锁令牌常时比较、不误删他人锁 | 结论=保留
@@ -32,19 +32,25 @@ fn disconnected_client() -> redisx::RedisClient {
         .client()
 }
 
-/// 边界：即使密码来自 TOML，`Debug` 与端点展示也必须脱敏。
-///
-/// 已知偏差（2026-09-22 实测并已上报）：`docs/标准.md` §2 声明 `from_toml()` 拒绝明文密码，
-/// 但实现仍接受该字段——故本用例不评价「是否接受」，只钉住「不得泄漏」这条。
+/// 边界：TOML 里的非空 `password` 必须被拒绝（凭据只能经 env / builder 注入），
+/// 且拒绝信息与解析错误信息都不得回显配置原文/凭据取值。
 #[test]
-fn toml_password_stays_redacted() {
+fn toml_plaintext_password_is_rejected_and_not_leaked() {
     let secret = String::from("toml-plaintext-secret");
     let toml = format!("addr = \"127.0.0.1:6379\"\npassword = \"{secret}\"\n");
-    let config = RedisConfig::from_toml(&toml).expect("当前实现接受该字段");
-    assert!(config.has_password());
-    let debug = format!("{config:?}");
-    assert!(!debug.contains(&secret), "Debug 泄漏密码: {debug}");
-    assert!(!config.display_endpoint().contains(&secret));
+    let error = RedisConfig::from_toml(&toml).expect_err("TOML 明文 password 必须被拒绝");
+    assert!(matches!(error, RedisError::Config(_)), "{error}");
+    let text = error.to_string();
+    assert!(!text.contains(&secret), "拒绝信息泄漏了凭据: {text}");
+
+    // 同一行写成语法错误时，解析错误信息同样不得带出源码行。
+    let malformed = format!("addr = \"127.0.0.1:6379\"\npassword = {secret}\n");
+    let error = RedisConfig::from_toml(&malformed).expect_err("语法错误必须拒绝");
+    let text = error.to_string();
+    assert!(
+        !text.contains(&secret),
+        "解析错误信息泄漏了配置原文: {text}"
+    );
 }
 
 /// 边界：`rediss://…#insecure` 与 Unix socket 一律 fail-closed。

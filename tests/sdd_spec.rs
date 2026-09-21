@@ -51,11 +51,7 @@ fn assert_positioning() {
 }
 
 /// S-2：配置治理——builder / from_env / from_toml / from_url 四入口 + `ENV_*` 常量 +
-/// 校验 fail-fast + 密码脱敏。
-///
-/// 已知偏差（2026-09-22 实测并已上报，按「测试不改生产代码」口径保留）：`docs/标准.md`
-/// §2 声明「`from_toml()` 拒绝明文密码」，但实现里 `RedisConfigWire` 仍接受 `password`
-/// 字段——故本用例不断言该条，仅断言其余为真的治理条款。
+/// 校验 fail-fast + 凭据只经 env / builder 注入（TOML 拒绝明文 password）+ 脱敏。
 #[test]
 fn assert_config_governance() {
     assert_eq!(ENV_PREFIX, "FOUNDATIONX_REDISX_");
@@ -112,6 +108,14 @@ fn assert_config_governance() {
     let endpoint = with_password.display_endpoint();
     assert!(endpoint.contains("***"));
     assert!(!endpoint.contains("s3cret-value"));
+
+    // 凭据只经 env / builder 注入：TOML 提供非空 password 必须 fail-closed。
+    let from_toml_with_password =
+        RedisConfig::from_toml("addr = \"127.0.0.1:6380\"\npassword = \"s3cret-value\"\n");
+    assert!(
+        matches!(from_toml_with_password, Err(RedisError::Config(_))),
+        "TOML 明文 password 必须被拒绝: {from_toml_with_password:?}"
+    );
 }
 
 /// S-3：连接与背压——有界 in-flight、各处超时、close 排空、结构化可观测数据。
