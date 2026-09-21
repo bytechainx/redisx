@@ -30,6 +30,17 @@ pub struct RedisClient {
     call_deadline: Option<Duration>,
 }
 
+impl RedisPool {
+    /// 派生可克隆的命令客户端。
+    ///
+    /// 与 [`RedisClient`] 同处一模块：池不需要反向依赖客户端类型，
+    /// 该派生入口由客户端侧提供。
+    #[must_use]
+    pub fn client(&self) -> RedisClient {
+        RedisClient::from_pool(self.clone())
+    }
+}
+
 impl RedisClient {
     /// 按配置建池并返回客户端。
     ///
