@@ -15,6 +15,7 @@
 //!
 //! // TDD-PROBE: RedisConfig::from_env | 变异：忽略 REDIS_URL 优先级恒读散字段 | 红=from_env_defaults_and_url_override | 绿=from_env_defaults_and_url_override
 //! // TDD-PROBE: RedisConfig::from_toml | 变异：放行非法 mode 字面量 | 红=from_toml_parses_and_rejects_invalid | 绿=from_toml_parses_and_rejects_invalid
+//! // TDD-PROBE: RedisConfig::from_toml | 变异：wire 采纳非空 password（明文凭据入配置） | 红=from_toml_rejects_plaintext_password | 绿=from_toml_rejects_plaintext_password
 //! // TDD-PROBE: RedisConfig::validate | 变异：去掉 Cluster 非 0 库与 Sentinel 缺 master 拦截 | 红=validate_topology_rules | 绿=validate_topology_rules
 //! // TDD-PROBE: RedisClient::connect_from_env | 变异：connect_from_env 忽略 addr 恒连本机默认 | 红=connect_from_env_refused_is_retryable | 绿=connect_from_env_refused_is_retryable
 //! // TDD-PROBE: RedisClient::set | 变异：未建连时写命令返回 Ok | 红=set_get_del_fail_closed_without_connection | 绿=set_get_del_fail_closed_without_connection
@@ -161,6 +162,21 @@ fn from_toml_parses_and_rejects_invalid() {
         RedisConfig::from_toml("addr = = 1").is_err(),
         "语法错误必须拒绝"
     );
+}
+
+/// `RedisConfig::from_toml` 必须拒绝非空 `password`——凭据只能经 env / builder 注入
+/// （`docs/标准.md` §2），TOML 通道不得把明文凭据带进配置。
+#[test]
+fn from_toml_rejects_plaintext_password() {
+    let toml = "addr = \"127.0.0.1:6379\"\npassword = \"plaintext-secret\"\n";
+    let error = RedisConfig::from_toml(toml).expect_err("TOML 明文 password 必须被拒绝");
+    assert!(matches!(error, RedisError::Config(_)), "{error}");
+    // 拒绝信息不得回显凭据取值。
+    assert!(!error.to_string().contains("plaintext-secret"), "{error}");
+
+    // 空白 password 等同未提供（不视为凭据走私）。
+    RedisConfig::from_toml("addr = \"127.0.0.1:6379\"\npassword = \"   \"\n")
+        .expect("空白 password 不应触发拒绝");
 }
 
 /// `RedisConfig::validate`：Cluster 非 0 逻辑库与 Sentinel 缺 master 一律拒绝。
