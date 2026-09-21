@@ -53,6 +53,16 @@ impl RedisLock {
 /// 常量时间比较两个锁令牌（[`RedisLock::verify_token`] 的纯函数形式）。
 ///
 /// 长度不同立即返回 `false`；长度相同时逐字节异或累加，耗时与首个不同字节的位置无关。
+///
+/// # Examples
+///
+/// ```
+/// use redisx::lock_token_matches;
+///
+/// assert!(lock_token_matches("lock-abc", "lock-abc"));
+/// assert!(!lock_token_matches("lock-abc", "lock-abd"));
+/// assert!(!lock_token_matches("lock-abc", "lock-ab"), "长度不同直接不匹配");
+/// ```
 #[must_use]
 pub fn lock_token_matches(expected: &str, candidate: &str) -> bool {
     constant_time_eq(expected.as_bytes(), candidate.as_bytes())
