@@ -4,3 +4,5 @@
 Cargo.lock
 # graft 代码图谱缓存（可再生）
 /graft/
+# OMC 运行时状态（忽略的操作产物）
+/.omc/

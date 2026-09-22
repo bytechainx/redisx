@@ -266,14 +266,16 @@ fn retry_safety_and_atomicity_contracts() {
         RedisAtomicity::MultiKeySingleSlot
     );
     assert_eq!(
-        RedisOperation::Mset.retry_safety(),
-        RedisRetrySafety::Idempotent
-    );
-    assert_eq!(
         RedisOperation::Mset.atomicity(),
         RedisAtomicity::MultiKeySingleSlot
     );
-    assert!(RedisOperation::Mset.allows_automatic_retry());
+    // MSET 与 SET 同为固定值写入：分类统一为 AmbiguousWrite（不自动重试）；
+    // atomicity 仍为 MultiKeySingleSlot，故不并入下方 SingleCommand 列表
+    assert_eq!(
+        RedisOperation::Mset.retry_safety(),
+        RedisRetrySafety::AmbiguousWrite
+    );
+    assert!(!RedisOperation::Mset.allows_automatic_retry());
 
     for operation in [
         RedisOperation::Set,

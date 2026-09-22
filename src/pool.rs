@@ -184,7 +184,9 @@ impl RedisPool {
         self.acquire().await?.get(key).await
     }
 
-    /// `SET`（无 TTL）。
+    /// `SET`（无 TTL；转发 [`crate::client::RedisClient::set`]，重试分类经
+    /// [`crate::resilience::RedisOperation::Set`] 矩阵单一来源——写入结果未知时
+    /// 不自动重试）。
     ///
     /// # Errors
     ///

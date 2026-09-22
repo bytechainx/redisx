@@ -70,8 +70,11 @@ impl RedisOperation {
     pub const fn retry_safety(self) -> RedisRetrySafety {
         match self {
             Self::Get | Self::Exists | Self::Ttl | Self::Mget => RedisRetrySafety::ReadOnly,
-            Self::Mset => RedisRetrySafety::Idempotent,
-            Self::Set | Self::Delete | Self::Expire => RedisRetrySafety::AmbiguousWrite,
+            // MSET 与 SET 同为固定值写入：结果未知（超时/断连）时重试可能覆盖
+            // 并发写入者的中间值，统一保守分类为 AmbiguousWrite（矩阵内一致）
+            Self::Set | Self::Delete | Self::Expire | Self::Mset => {
+                RedisRetrySafety::AmbiguousWrite
+            }
             Self::Incr | Self::Publish => RedisRetrySafety::NeverAutomatic,
         }
     }
@@ -495,14 +498,15 @@ mod tests {
         }
         assert_eq!(
             RedisOperation::Mset.retry_safety(),
-            RedisRetrySafety::Idempotent
+            RedisRetrySafety::AmbiguousWrite,
+            "MSET 与 SET 同为固定值写入，分类必须一致"
         );
-        assert!(RedisOperation::Mset.allows_automatic_retry());
 
         for op in [
             RedisOperation::Set,
             RedisOperation::Delete,
             RedisOperation::Expire,
+            RedisOperation::Mset,
             RedisOperation::Incr,
             RedisOperation::Publish,
         ] {

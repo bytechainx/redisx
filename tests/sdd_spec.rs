@@ -160,14 +160,13 @@ async fn assert_retry_and_side_effect_safety() {
         RedisOperation::Get.retry_safety(),
         RedisRetrySafety::ReadOnly
     );
-    assert_eq!(
-        RedisOperation::Mset.retry_safety(),
-        RedisRetrySafety::Idempotent
-    );
+    // MSET 与 SET 同为固定值写入：分类统一为 AmbiguousWrite（不自动重试），
+    // 符合规格 S-4「结果不明的命令永远只执行一次」的保守原则
     for ambiguous in [
         RedisOperation::Set,
         RedisOperation::Delete,
         RedisOperation::Expire,
+        RedisOperation::Mset,
     ] {
         assert_eq!(
             ambiguous.retry_safety(),
