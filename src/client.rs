@@ -173,7 +173,12 @@ impl RedisClient {
         self.get(key).await
     }
 
-    /// `SET`（无 TTL；固定值写入按幂等语义可自动重试）。
+    /// `SET`（无 TTL）。
+    ///
+    /// 重试安全分类经 [`RedisOperation::Set`] 矩阵单一来源（`AmbiguousWrite`）：
+    /// 写入结果未知（超时/断连）时**不自动重试**，与 `RedisPool::set` 及
+    /// `retry_safety()` 的矩阵语义一致，避免重试环在调用方不知情下覆盖并发
+    /// 写入者的中间值。确需自动重试时，调用方应自行判定幂等性并显式包装。
     ///
     /// # Errors
     ///
@@ -181,7 +186,7 @@ impl RedisClient {
     pub async fn set(&self, key: &str, value: Vec<u8>) -> RedisResult<()> {
         let this = self.clone();
         let key = key.to_owned();
-        self.route_with_safety(RedisRetrySafety::Idempotent, "redis.set", move || {
+        self.route(RedisOperation::Set, "redis.set", move || {
             let this = this.clone();
             let key = key.clone();
             let value = value.clone();
@@ -540,6 +545,37 @@ mod tests {
         assert!(
             calls.load(Ordering::SeqCst) >= 10,
             "公共 KV 面应进入 driver"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_retry_classification_is_sourced_from_operation_matrix() {
+        // 矩阵单一来源：Set 为 AmbiguousWrite，不允许自动重试
+        assert_eq!(
+            RedisOperation::Set.retry_safety(),
+            RedisRetrySafety::AmbiguousWrite
+        );
+        assert!(!RedisOperation::Set.allows_automatic_retry());
+
+        // 行为级：即使配置了 RetryConfig，set() 也只执行一次（不进重试环）
+        let calls = Arc::new(AtomicUsize::new(0));
+        let client =
+            probe(calls.clone()).with_retry(RetryConfig::fixed(3, Duration::from_millis(1)));
+        let _ = client.set("k", b"v".to_vec()).await;
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "set() 在 AmbiguousWrite 分类下不得自动重试"
+        );
+
+        // 对照：ReadOnly 分类的 get() 在相同配置下应进入重试环
+        let calls_ro = Arc::new(AtomicUsize::new(0));
+        let client_ro =
+            probe(calls_ro.clone()).with_retry(RetryConfig::fixed(3, Duration::from_millis(1)));
+        let _ = client_ro.get("k").await;
+        assert!(
+            calls_ro.load(Ordering::SeqCst) >= 2,
+            "ReadOnly 分类的 get() 应自动重试"
         );
     }
 
