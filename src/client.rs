@@ -331,6 +331,9 @@ impl RedisClient {
 
     /// `MSET`（无 TTL；跨 Cluster slot 不承诺原子性）。
     ///
+    /// 重试安全分类经 [`RedisOperation::Mset`] 矩阵单一来源（`AmbiguousWrite`，
+    /// 与 [`RedisClient::set`] 一致）：写入结果未知时**不自动重试**。
+    ///
     /// # Errors
     ///
     /// 连接/协议失败或超时时返回错误。

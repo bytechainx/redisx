@@ -10,6 +10,10 @@
 
 ### 变更
 
+- **`RedisOperation::Mset` 重试分类由 `Idempotent` 改为 `AmbiguousWrite`**：
+  MSET 与 SET 同为固定值写入，写入结果未知（超时/断连）时自动重试可能覆盖
+  并发写入者的中间值；统一为保守分类后矩阵内不再有同类命令分类漂移，
+  `RedisClient::mset()` 不再自动重试（Wave 2 审查 follow-up）。
 - **`RedisClient::set()` 不再走硬编码 Idempotent 重试捷径**，重试分类改经
   `RedisOperation::Set` 安全矩阵单一来源（`AmbiguousWrite`）：SET 结果未知
   （超时/断连）时不再自动重试，与 `RedisPool::set()` 及矩阵路径行为一致
