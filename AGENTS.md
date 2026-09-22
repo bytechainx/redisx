@@ -19,11 +19,24 @@
 src/
 ├── lib.rs        # 入口：模块声明 + 受控 re-export
 ├── client.rs     # RedisClient：KV、Hash/List/Set/ZSet、Streams、事务、Lua、分布式锁
-├── config.rs     # RedisConfig / RedisConfigBuilder / RedisMode + ENV_* 常量
+├── config.rs     # RedisConfig 门面：RedisMode / RedisConfig 定义 + ENV_* 常量、
+│                 # Default/Debug、validate、连接信息构造、内联测试
+├── config/
+│   ├── accessors.rs # RedisConfig 的只读访问器（addr/nodes/db/tls/mode/... 与 timeout 系列）
+│   ├── builder.rs   # RedisConfigBuilder（链式覆盖）
+│   ├── parse.rs     # 解析与校验辅助（host:port、mode、seed 脱敏）
+│   └── wire.rs      # TOML / serde wire 形态与 apply_wire 字段映射
 ├── error.rs      # RedisError（is_retryable）/ RedisResult
 ├── error_map.rs  # map_redis_error / map_redis_result 错误映射
 ├── ext.rs        # RedisLock / generate_lock_token / lock_token_matches
-├── pool.rs       # RedisPool（connect/acquire/ping/health_check/stats/metrics_snapshot/close）
+├── pool.rs       # RedisPool 门面：RedisPoolStats/MetricsSnapshot/Health、RedisPoolPermit、
+│                 # 契约方法 + 内联测试
+├── pool/
+│   ├── backend.rs   # RedisBackend（ConnectionLike 实现）与 connection_manager_config
+│   ├── connect.rs   # connect_standalone / connect_cluster / connect_sentinel
+│   ├── kv.rs        # 单命令原语集合（被 Pool / Permit / Client 共用）
+│   ├── lifecycle.rs # connect / new / connect_from_env 与 from_parts / acquire_with_timeout
+│   └── permit.rs    # RedisPoolPermit 的执行与 deadline 语义
 ├── pubsub.rs     # RedisPubSub / RedisPubSubMessage（feature = "pubsub"）
 ├── resilience.rs # RetryConfig / with_retry / RedisOperation / RedisRetrySafety / RedisAtomicity
 ├── streams.rs    # StreamEntry

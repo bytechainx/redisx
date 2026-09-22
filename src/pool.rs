@@ -13,11 +13,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use redis::aio::{ConnectionLike, ConnectionManager};
-use redis::cluster_async::ClusterConnection;
-use redis::{AsyncCommands, Cmd, Pipeline, RedisFuture, Value};
+use redis::AsyncCommands;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use tokio::time::timeout;
 
 use crate::config::{RedisConfig, RedisMode};
 use crate::error::{RedisError, RedisResult};
@@ -65,69 +62,8 @@ pub struct RedisHealth {
     pub mode: RedisMode,
 }
 
-/// 连接后端：Standalone（含 Sentinel master）或 Cluster。
-///
-/// `ConnectionManager` 体积较大，装箱以抑制 `large_enum_variant`。
-#[derive(Clone)]
-pub(crate) enum RedisBackend {
-    /// 单机 / Sentinel master。
-    Standalone(Box<ConnectionManager>),
-    /// Redis Cluster。
-    Cluster(ClusterConnection),
-    /// 测试 driver：记录命令调用次数并始终返回 I/O 错误。
-    #[cfg(test)]
-    Probe(Arc<AtomicUsize>),
-}
-
-impl ConnectionLike for RedisBackend {
-    fn req_packed_command<'a>(&'a mut self, cmd: &'a Cmd) -> RedisFuture<'a, Value> {
-        match self {
-            Self::Standalone(conn) => conn.req_packed_command(cmd),
-            Self::Cluster(conn) => conn.req_packed_command(cmd),
-            #[cfg(test)]
-            Self::Probe(calls) => {
-                calls.fetch_add(1, Ordering::SeqCst);
-                Box::pin(async {
-                    Err(redis::RedisError::from((
-                        redis::ErrorKind::IoError,
-                        "测试 driver 被调用",
-                    )))
-                })
-            }
-        }
-    }
-
-    fn req_packed_commands<'a>(
-        &'a mut self,
-        cmd: &'a Pipeline,
-        offset: usize,
-        count: usize,
-    ) -> RedisFuture<'a, Vec<Value>> {
-        match self {
-            Self::Standalone(conn) => conn.req_packed_commands(cmd, offset, count),
-            Self::Cluster(conn) => conn.req_packed_commands(cmd, offset, count),
-            #[cfg(test)]
-            Self::Probe(calls) => {
-                calls.fetch_add(1, Ordering::SeqCst);
-                Box::pin(async {
-                    Err(redis::RedisError::from((
-                        redis::ErrorKind::IoError,
-                        "测试 driver 被调用",
-                    )))
-                })
-            }
-        }
-    }
-
-    fn get_db(&self) -> i64 {
-        match self {
-            Self::Standalone(conn) => conn.get_db(),
-            Self::Cluster(conn) => conn.get_db(),
-            #[cfg(test)]
-            Self::Probe(_) => 0,
-        }
-    }
-}
+// `src/pool.rs` 下沉后，`pub(crate)` 项经此转出，保持 `crate::pool::{…}` 路径不变。
+pub(crate) use self::backend::{connection_manager_config, RedisBackend};
 
 /// 共享 Redis 连接池（`Clone` 只增加引用计数）。
 #[derive(Clone)]
@@ -193,61 +129,6 @@ impl Drop for RedisPoolPermit {
 }
 
 impl RedisPool {
-    /// 按配置建立连接（Standalone / Cluster / Sentinel）。
-    ///
-    /// 会执行可选的 `CLIENT SETNAME` 与 `warmup_count` 次 `PING`；二者失败均不阻断建池。
-    ///
-    /// # Errors
-    ///
-    /// 配置校验失败、连接建立失败或建连超时时返回错误。
-    #[tracing::instrument(skip(config), fields(endpoint = %config.display_endpoint()))]
-    pub async fn connect(config: RedisConfig) -> RedisResult<Self> {
-        config.validate()?;
-        let backend = match config.mode() {
-            RedisMode::Standalone => connect_standalone(&config).await?,
-            RedisMode::Cluster => connect_cluster(&config).await?,
-            RedisMode::Sentinel => connect_sentinel(&config).await?,
-        };
-
-        if let Some(name) = config.client_name() {
-            let mut conn = backend.clone();
-            let _: redis::RedisResult<()> = redis::cmd("CLIENT")
-                .arg("SETNAME")
-                .arg(name)
-                .query_async(&mut conn)
-                .await;
-        }
-
-        for _ in 0..config.warmup_count() {
-            let mut conn = backend.clone();
-            let _: redis::RedisResult<String> = redis::cmd("PING").query_async(&mut conn).await;
-        }
-
-        Ok(Self::from_parts(config, Some(backend)))
-    }
-
-    /// 同步构造：只校验配置，**不建立任何网络连接**。
-    ///
-    /// 该池上的数据面命令会以 [`RedisError::Connection`] 失败，直到改用
-    /// [`RedisPool::connect`]；适用于「先构造配置持有者、稍后建连」的场景。
-    ///
-    /// # Errors
-    ///
-    /// 配置校验失败时返回 [`RedisError::Config`]。
-    pub fn new(config: RedisConfig) -> RedisResult<Self> {
-        config.validate()?;
-        Ok(Self::from_parts(config, None))
-    }
-
-    /// 从环境变量连接（见 [`RedisConfig::from_env`]）。
-    ///
-    /// # Errors
-    ///
-    /// 环境变量非法或建连失败时返回错误。
-    pub async fn connect_from_env() -> RedisResult<Self> {
-        Self::connect(RedisConfig::from_env()?).await
-    }
-
     /// 建池时使用的配置（只读）。
     #[must_use]
     pub fn config(&self) -> &RedisConfig {
@@ -549,119 +430,14 @@ impl RedisPool {
             .execute_with_total_deadline(started_at, total, f)
             .await
     }
-
-    fn from_parts(config: RedisConfig, backend: Option<RedisBackend>) -> Self {
-        let display_endpoint = config.display_endpoint();
-        let max_in_flight = config.max_in_flight();
-        let command_timeout = config.command_timeout();
-        let acquire_timeout = config.acquire_timeout();
-        let reconnect_max_delay = config.reconnect_max_delay();
-        let tcp_keepalive = config.tcp_keepalive();
-        Self {
-            inner: Arc::new(PoolInner {
-                backend,
-                command_timeout,
-                acquire_timeout,
-                reconnect_max_delay,
-                tcp_keepalive,
-                config,
-                sem: Arc::new(Semaphore::new(max_in_flight)),
-                max_in_flight,
-                in_flight: AtomicUsize::new(0),
-                waiters: AtomicUsize::new(0),
-                closed: AtomicBool::new(false),
-                display_endpoint,
-                commands_ok: AtomicU64::new(0),
-                commands_err: AtomicU64::new(0),
-                commands_timeout: AtomicU64::new(0),
-                acquire_timeout_count: AtomicU64::new(0),
-                rejected_closed: AtomicU64::new(0),
-            }),
-        }
-    }
-
-    async fn acquire_with_timeout(&self, budget: Duration) -> RedisResult<RedisPoolPermit> {
-        if self.is_closed() {
-            self.inner.rejected_closed.fetch_add(1, Ordering::Relaxed);
-            return Err(RedisError::Connection("redis 连接池已关闭".to_owned()));
-        }
-        let backend = match self.inner.backend.as_ref() {
-            Some(backend) => backend.clone(),
-            None => {
-                return Err(RedisError::Connection(
-                    "redis 连接池尚未建立连接（RedisPool::new 仅校验配置，请改用 RedisPool::connect）"
-                        .to_owned(),
-                ));
-            }
-        };
-        if budget.is_zero() {
-            self.inner
-                .acquire_timeout_count
-                .fetch_add(1, Ordering::Relaxed);
-            return Err(RedisError::Timeout(
-                "redis 获取 in-flight 许可预算为 0".to_owned(),
-            ));
-        }
-
-        self.inner.waiters.fetch_add(1, Ordering::SeqCst);
-        let acquired = timeout(budget, self.inner.sem.clone().acquire_owned()).await;
-        self.inner.waiters.fetch_sub(1, Ordering::SeqCst);
-
-        match acquired {
-            Ok(Ok(permit)) => {
-                if self.is_closed() {
-                    drop(permit);
-                    self.inner.rejected_closed.fetch_add(1, Ordering::Relaxed);
-                    return Err(RedisError::Connection("redis 连接池已关闭".to_owned()));
-                }
-                self.inner.in_flight.fetch_add(1, Ordering::SeqCst);
-                Ok(RedisPoolPermit {
-                    inner: self.inner.clone(),
-                    backend,
-                    _permit: permit,
-                })
-            }
-            Ok(Err(_)) => Err(RedisError::Connection("redis 背压信号量已关闭".to_owned())),
-            Err(_) => {
-                self.inner
-                    .acquire_timeout_count
-                    .fetch_add(1, Ordering::Relaxed);
-                Err(RedisError::Timeout(format!(
-                    "redis 获取 in-flight 许可超时（max={}）",
-                    self.inner.max_in_flight
-                )))
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn test_probe(driver_calls: Arc<AtomicUsize>) -> Self {
-        Self::from_parts(
-            RedisConfig::default(),
-            Some(RedisBackend::Probe(driver_calls)),
-        )
-    }
 }
 
-/// 由 [`RedisConfig`] 构造 ConnectionManager 的重连/超时参数（可单测）。
-pub(crate) fn connection_manager_config(
-    config: &RedisConfig,
-) -> redis::aio::ConnectionManagerConfig {
-    let max_delay_ms = u64::try_from(config.reconnect_max_delay().as_millis()).unwrap_or(u64::MAX);
-    // 读取 tcp_keepalive，保证 connect 路径消费该配置（驱动侧为 OS 默认 keepalive）。
-    let _keepalive_policy = config.tcp_keepalive();
-    redis::aio::ConnectionManagerConfig::new()
-        .set_connection_timeout(config.connect_timeout())
-        .set_response_timeout(config.command_timeout())
-        .set_max_delay(max_delay_ms)
-}
-
+mod backend;
 mod connect;
 /// 单命令原语集合（被 `RedisPool` / `RedisPoolPermit` / `RedisClient` 共用）。
 pub(crate) mod kv;
+mod lifecycle;
 mod permit;
-
-use connect::{connect_cluster, connect_sentinel, connect_standalone};
 
 #[cfg(test)]
 mod tests {
