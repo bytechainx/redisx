@@ -11,7 +11,7 @@
 //! ```bash
 //! set -a; source /home/workspace/sre/secrets/env/redisx.env; set +a
 //! cd /home/workspace/bytechainx/redisx
-//! CARGO_TARGET_DIR=/home/workspace/bytechainx/.cargo-target \
+//! CARGO_TARGET_DIR=/home/workspace/bytechainx/.cargo/target \
 //!   cargo test --test live_redis -- --ignored --test-threads=1
 //! ```
 //!
