@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-22
+
 ### 新增
 
 - 三类合规测试（特性 002）：
@@ -15,6 +17,23 @@
   - `tests/sdd_spec.rs`：`docs/标准.md` §1–§5 章节的 `// SPEC-MAP:` 1:1 可执行对照；
   - `tests/aidd_boundary.rs`：8 条对抗/边界用例与 `// AIDD:` 人工复核表。
 - `tests/live_redis.rs`：真实 Redis 的 live 用例（建连 / 结构化探活 / 唯一名 key 的 SET-GET-DEL 与 TTL 往返 + 清理 / close 收尾），默认 `#[ignore]`，凭据只读环境变量，运行方式见 `scripts/live/README.md`。
+
+### 变更
+
+- **内部结构改写（公开 API 与可观察契约均不变）**：按 `docs/module-rules.md` §5.5 的手法，把
+  `src/pool.rs` 与 `src/config.rs` 两处超长门面继续下沉 ——
+  池侧：连接后端与 `ConnectionManager` 参数 → `src/pool/backend.rs`、建连/构造/并发许可获取 →
+  `src/pool/lifecycle.rs`；配置侧：只读访问器 → `src/config/accessors.rs`、
+  wire 形态与字段映射 → `src/config/wire.rs`。两个门面只保留模块文档、类型定义、`Debug`/`Default`、
+  其余方法（含 `validate` / `close` / `subscribe` / 连接信息构造）与**原有内联测试**。
+  `RedisBackend` / `connection_manager_config` 经门面 `pub(crate) use` 转出，故
+  `src/client.rs` 与各 `pool/*.rs` 的引用路径不变。**可见性调整仅限 crate 内部**：
+  `acquire_with_timeout`、`apply_wire`、`RedisConfigWire` 提为 `pub(super)`。
+  `src/pool.rs` 生产段 **665 → 441**、`src/config.rs` 生产段 **662 → 327**。
+  动机：`module-rules` 是元仓库必需检查，且它审计各仓**默认分支**，故当两处距
+  `MR-STRUCT-007` 的 800 行 ERROR 阈值只剩 135 / 138 行时，任一仓的任意改动都可能卡住
+  元仓库的全部 PR。属**纯搬移**（行多重集比对确认零代码行丢失），全部 137 项测试与
+  doctest 结果不变。
 
 ## [0.1.1] - 2026-09-22
 
