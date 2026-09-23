@@ -6,7 +6,7 @@
 )]
 //! TDD 行为契约（特性 002）。
 //!
-//! 入口集合 = `specs/002-public-api-compliance-and-test-tiers/contracts/public-api-contract.md`
+//! 入口集合 = `specs/features/002-public-api-compliance-and-test-tiers/contracts/public-api-contract.md`
 //! 登记的 14 个 redisx 入口（分布式锁按 `lock_acquire` / `lock_release` / `lock_extend` 分列）。
 //!
 //! 全部用例离线：失败路径使用未建连的池（`RedisPool::new` 只校验配置）与必然拒绝连接的
