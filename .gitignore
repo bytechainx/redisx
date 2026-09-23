@@ -6,3 +6,5 @@ Cargo.lock
 /graft/
 # OMC 运行时状态（忽略的操作产物）
 /.omc/
+# 日志文件（构建/测试/clippy/fmt，可再生）
+*.log
