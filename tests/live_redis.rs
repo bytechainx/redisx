@@ -9,8 +9,8 @@
 //! 全部用例 `#[ignore]`，默认不跑（CI 行为不变）。本地显式运行：
 //!
 //! ```bash
-//! set -a; source /home/workspace/sre/secrets/env/redisx.env; set +a
-//! cd /home/workspace/bytechainx/redisx
+//! set -a; source /home/workspace/bytechainx/.config/redisx.env; set +a
+//! cd <crate 根>
 //! CARGO_TARGET_DIR=/home/workspace/bytechainx/.cargo/target \
 //!   cargo test --test live_redis -- --ignored --test-threads=1
 //! ```

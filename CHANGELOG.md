@@ -8,7 +8,14 @@
 
 ## [Unreleased]
 
+### 新增
+
+- `tests/e2e_redis.rs`：公开面 E2E（离线 fail-closed + `#[ignore]` 真连全程）。凭据只读 `FOUNDATIONX_REDISX_*` / `REDIS_URL`，本机注入认工作区根 `.config/redisx.env`。
+
 ### 变更
+
+- `tests/live_redis.rs` 运行说明改为 `.config/redisx.env`，不再指向工作区外 `sre/secrets`。
+
 
 - **`RedisOperation::Mset` 重试分类由 `Idempotent` 改为 `AmbiguousWrite`**：
   MSET 与 SET 同为固定值写入，写入结果未知（超时/断连）时自动重试可能覆盖
