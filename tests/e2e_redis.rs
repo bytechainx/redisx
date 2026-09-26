@@ -24,10 +24,10 @@ use futures_util::StreamExt;
 use redisx::{
     generate_lock_token, lock_token_matches, map_redis_error, map_redis_result, with_retry,
     RedisAtomicity, RedisClient, RedisConfig, RedisError, RedisHealth, RedisMetricsSnapshot,
-    RedisMode, RedisOperation, RedisPool, RedisPoolStats, RedisPubSub,
-    RedisPubSubMessage, RedisResult, RedisRetrySafety, RetryConfig, StreamEntry, TxCmd, ENV_ADDR,
-    ENV_BLOCKING_TIMEOUT_MS, ENV_DB, ENV_MAX_IN_FLIGHT, ENV_MODE, ENV_NODES, ENV_PASSWORD, ENV_PREFIX,
-    ENV_SENTINEL_MASTER, ENV_TLS, ENV_URL, ENV_USERNAME, ENV_WARMUP,
+    RedisMode, RedisOperation, RedisPool, RedisPoolStats, RedisPubSub, RedisPubSubMessage,
+    RedisResult, RedisRetrySafety, RetryConfig, StreamEntry, TxCmd, ENV_ADDR,
+    ENV_BLOCKING_TIMEOUT_MS, ENV_DB, ENV_MAX_IN_FLIGHT, ENV_MODE, ENV_NODES, ENV_PASSWORD,
+    ENV_PREFIX, ENV_SENTINEL_MASTER, ENV_TLS, ENV_URL, ENV_USERNAME, ENV_WARMUP,
 };
 
 const E2E_MANIFEST: &[(&str, &str)] = &[
@@ -297,7 +297,7 @@ const E2E_MANIFEST: &[(&str, &str)] = &[
     ("fn", "map_redis_error"),
     ("fn", "map_redis_result"),
     ("fn", "with_retry"),
-    ("type", "RedisResult")
+    ("type", "RedisResult"),
 ];
 
 mod cover {
@@ -386,7 +386,11 @@ fn phase_value_types() {
     hit("variant", "RedisMode::Standalone");
     hit("variant", "RedisMode::Cluster");
     hit("variant", "RedisMode::Sentinel");
-    let _ = [RedisMode::Standalone, RedisMode::Cluster, RedisMode::Sentinel];
+    let _ = [
+        RedisMode::Standalone,
+        RedisMode::Cluster,
+        RedisMode::Sentinel,
+    ];
 
     hit("type", "RedisRetrySafety");
     let _ = [
@@ -910,11 +914,16 @@ async fn e2e_live_full_journey() {
     let channel = unique("ch").replace(':', ".");
 
     pool.set(&kv, b"v1".to_vec()).await.expect("pool set");
-    assert_eq!(pool.get(&kv).await.expect("pool get").as_deref(), Some(b"v1".as_slice()));
+    assert_eq!(
+        pool.get(&kv).await.expect("pool get").as_deref(),
+        Some(b"v1".as_slice())
+    );
     pool.set_ex(&kv, b"v2".to_vec(), Duration::from_secs(30))
         .await
         .expect("pool set_ex");
-    pool.expire(&kv, Duration::from_secs(30)).await.expect("expire");
+    pool.expire(&kv, Duration::from_secs(30))
+        .await
+        .expect("expire");
     let _ = pool.ttl(&kv).await.expect("ttl");
     assert!(pool.exists(&kv).await.expect("exists"));
     pool.incr(&incrk, 1).await.expect("pool incr");
@@ -932,7 +941,10 @@ async fn e2e_live_full_journey() {
     hit("fn", "RedisPoolPermit::set_ex");
     let _ = permit.get(&kv).await.expect("permit get");
     hit("fn", "RedisPoolPermit::get");
-    permit.expire(&kv, Duration::from_secs(30)).await.expect("p exp");
+    permit
+        .expire(&kv, Duration::from_secs(30))
+        .await
+        .expect("p exp");
     hit("fn", "RedisPoolPermit::expire");
     let _ = permit.ttl(&kv).await.expect("p ttl");
     hit("fn", "RedisPoolPermit::ttl");
@@ -945,7 +957,10 @@ async fn e2e_live_full_journey() {
     hit("fn", "RedisPoolPermit::command_timeout");
     hit("fn", "RedisPoolPermit::endpoint");
     let gone = format!("{prefix}:gone");
-    permit.set(&gone, b"x".to_vec()).await.expect("permit set gone");
+    permit
+        .set(&gone, b"x".to_vec())
+        .await
+        .expect("permit set gone");
     assert!(permit.del(&gone).await.expect("permit del"));
     assert!(!permit.exists(&gone).await.expect("permit gone gone"));
     hit("fn", "RedisPoolPermit::del");
@@ -956,7 +971,9 @@ async fn e2e_live_full_journey() {
         .expect("pool from_env")
         .client();
     hit("fn", "RedisPool::connect_from_env");
-    let client2 = RedisClient::connect_from_env().await.expect("client from_env");
+    let client2 = RedisClient::connect_from_env()
+        .await
+        .expect("client from_env");
     hit("fn", "RedisClient::connect_from_env");
     client2.ping().await.expect("c2 ping");
     drop(client2);
@@ -972,7 +989,10 @@ async fn e2e_live_full_journey() {
         Some(b"v5".as_slice())
     );
     hit("fn", "RedisClient::get");
-    client.set_bytes(&kv, b"v6".to_vec()).await.expect("set_bytes");
+    client
+        .set_bytes(&kv, b"v6".to_vec())
+        .await
+        .expect("set_bytes");
     hit("fn", "RedisClient::set_bytes");
     assert_eq!(
         client.get_bytes(&kv).await.expect("get_bytes").as_deref(),
@@ -995,7 +1015,10 @@ async fn e2e_live_full_journey() {
     assert_eq!(mget[0].as_deref(), Some(b"v8".as_slice()));
     assert!(client.exists(&kv).await.expect("exists"));
     hit("fn", "RedisClient::exists");
-    client.expire(&kv, Duration::from_secs(30)).await.expect("expire");
+    client
+        .expire(&kv, Duration::from_secs(30))
+        .await
+        .expect("expire");
     hit("fn", "RedisClient::expire");
     let _ = client.ttl(&kv).await.expect("ttl");
     hit("fn", "RedisClient::ttl");
@@ -1034,9 +1057,15 @@ async fn e2e_live_full_journey() {
     hit("fn", "RedisClient::sismember");
     assert_eq!(client.srem(&setk, b"m").await.expect("srem"), 1);
     hit("fn", "RedisClient::srem");
-    assert!(!client.sismember(&setk, b"m").await.expect("sismember after srem"));
+    assert!(!client
+        .sismember(&setk, b"m")
+        .await
+        .expect("sismember after srem"));
 
-    assert_eq!(client.zadd(&zset, b"m".to_vec(), 1.0).await.expect("zadd"), 1);
+    assert_eq!(
+        client.zadd(&zset, b"m".to_vec(), 1.0).await.expect("zadd"),
+        1
+    );
     hit("fn", "RedisClient::zadd");
     assert_eq!(client.zscore(&zset, b"m").await.expect("zscore"), Some(1.0));
     hit("fn", "RedisClient::zscore");
@@ -1055,9 +1084,17 @@ async fn e2e_live_full_journey() {
     hit("fn", "RedisClient::xadd_with_id");
     assert!(client.xlen(&stream).await.expect("xlen") >= 2);
     hit("fn", "RedisClient::xlen");
-    assert!(!client.xrange(&stream, "-", "+", None).await.expect("xrange").is_empty());
+    assert!(!client
+        .xrange(&stream, "-", "+", None)
+        .await
+        .expect("xrange")
+        .is_empty());
     hit("fn", "RedisClient::xrange");
-    assert!(!client.xread(&stream, "0-0", None).await.expect("xread").is_empty());
+    assert!(!client
+        .xread(&stream, "0-0", None)
+        .await
+        .expect("xread")
+        .is_empty());
     hit("fn", "RedisClient::xread");
     assert!(client
         .xread_block(&stream, "$", Duration::from_millis(50), None)
@@ -1149,10 +1186,7 @@ async fn e2e_live_full_journey() {
     let fence_key = format!("fence:{lockk}");
     assert!(client.del(&fence_key).await.expect("del fence"));
 
-    let sub = pool
-        .subscribe([channel.clone()])
-        .await
-        .expect("subscribe");
+    let sub = pool.subscribe([channel.clone()]).await.expect("subscribe");
     hit("fn", "RedisPool::subscribe");
     let _ = sub.endpoint();
     hit("fn", "RedisPubSub::endpoint");
