@@ -17,7 +17,7 @@
 //! ```
 
 use std::collections::BTreeSet;
-use std::io::{Error as IoError, ErrorKind};
+use std::io::Error as IoError;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::StreamExt;
@@ -518,7 +518,7 @@ fn phase_value_types() {
         RedisError::Connection("n".into()),
         RedisError::Backend("b".into()),
         RedisError::Serialization("s".into()),
-        RedisError::Io(IoError::new(ErrorKind::Other, "io")),
+        RedisError::Io(IoError::other("io")),
         RedisError::Timeout("t".into()),
         RedisError::Unsupported("u".into()),
         RedisError::Transient("tr".into()),
