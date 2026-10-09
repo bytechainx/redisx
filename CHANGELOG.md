@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### 破坏性变更
+
+- MSRV 由 `1.75` 上调至 `1.88`：依赖链中的 `icu_provider 2.3.1`（经 `idna_adapter`）
+  要求 rustc 1.88，原声明值不可满足。同时入库 `Cargo.lock` 并新增 `deny.toml`
+  （供应链可重现，见组织基线 `R-SEC-009` / `R-DEP-005`）。
+
 ### 新增
 
 - `tests/e2e_redis.rs`：公开面 E2E（离线 fail-closed + `#[ignore]` 真连全程）。凭据只读 `FOUNDATIONX_REDISX_*` / `REDIS_URL`，本机注入认工作区根 `.config/redisx.env`。
