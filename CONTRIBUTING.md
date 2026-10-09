@@ -66,7 +66,7 @@ cargo package --no-verify --allow-dirty
   密码只能经环境变量或 builder（含 `password_from_provider`）注入。
 - **有界背压**：连接池以 `max_in_flight` + `acquire_timeout` 限流，禁止引入无界队列；
   所有外部调用必须有 timeout。
-- edition 2021，MSRV `rust-version = "1.75"`（改动依赖时同步核对）。
+- edition 2021，MSRV `rust-version = "1.88"`（改动依赖时同步核对）。
 
 ## 提交前自检清单
 
