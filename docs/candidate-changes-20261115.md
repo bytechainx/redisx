@@ -11,6 +11,7 @@
 | C1 | `AGENTS.md` 技术栈行 `rust-version 1.75` 与 `Cargo.toml` `rust-version = "1.88"` 不一致 | `Cargo.toml:5`；MSRV 由 `0c73513` 上调；`AGENTS.md:11` | 文档漂移，误导贡献者按旧 MSRV 开发 | 改为 1.88，随下一文档 MR 合入 |
 | C2 | `docs/标准.md` 文首 `redisx` v0.1.0 与 Cargo `0.1.2` 差额无说明 | `docs/标准.md:3`；`Cargo.toml:3`；workspace 侧已按「文首自称版本 ≠ Cargo 版本」登记（`STATUS.md` 诚实表） | 读者可能误读版本；workspace 已容忍，不阻塞 | 二选一：文首补注「文档版本」语义，或随版本治理约定对齐；需 crate Owner 裁定口径 |
 | C3 | `docs/标准.md` §5 测试清单只列 4 个离线测试文件，未提 `aidd_boundary.rs` / `sdd_spec.rs` / `tdd_contracts.rs` / `e2e_redis.rs` / `live_redis.rs` | `docs/标准.md:37`；`tests/` 实有 9 个测试目标 | 「至少覆盖」语义下不算违约，但分层全貌不完整 | 可选：补一句分层索引指向各测试文件职责，不改验收口径 |
+| C4 | 依赖漏洞：`cargo deny`（advisories）当前报错多条 rustls / 压缩相关 RUSTSEC（ECH、ServerHello 降级、brotli 解压分配等），PR #17 的 `cargo deny` job 失败而 `main` 2026-10-09 的同锁文件 CI 为 success——系公告库随时间更新所致，非本次文档改动引入 | PR #17 check `cargo deny` 失败日志；`gh run list --branch main` | 任何新 PR 的 `cargo deny` 门禁都会红，直至升级依赖或登记例外 | 需 Owner 裁定：升级 `rustls`/相关依赖链，或按 `fc9de9b` 先例在 `deny.toml` 登记带期限例外；属代码/治理变更，不在 T101 范围 |
 
 ## 已核对无候选
 
